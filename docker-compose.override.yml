@@ -1,0 +1,13 @@
+# Local overrides for the panini-bid-dev project, auto-merged by compose.
+# Values come from .env (compose variable substitution) — keep the real
+# secrets in .env only; this file stays secret-free.
+services:
+  app:
+    environment:
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GOOGLE_IOS_CLIENT_ID: "${GOOGLE_IOS_CLIENT_ID}"
+      GOOGLE_ANDROID_CLIENT_ID: "${GOOGLE_ANDROID_CLIENT_ID}"
+      # Dev-only: lets the Web front-end log in via POST /auth/login/dev
+      # instead of a social login. Never set this in production — the backend
+      # refuses to start if DEV_AUTH_ENABLED is on while NODE_ENV=production.
+      DEV_AUTH_ENABLED: "true"

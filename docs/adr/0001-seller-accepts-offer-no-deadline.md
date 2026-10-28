@@ -1,0 +1,3 @@
+# Listings end by seller accepting an offer, not by a deadline
+
+A published Listing stays open until the seller manually accepts one of the incoming Bids (or cancels). There is no countdown timer and no automatic "highest bid wins" at a deadline. We chose seller-accepts-an-offer over a timed auction because Panini sticker trading is casual and social: sellers want control to wait for the right offer, negotiate in chat, or favor a nearby bidder for hand-delivery. A deadline would introduce sniping behavior and pressure that doesn't fit the vibe. The trade-off is that listings can sit open indefinitely — mitigated by seller cancellation and feed deprioritization of stale listings.

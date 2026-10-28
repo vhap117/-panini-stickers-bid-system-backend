@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "declaration": false,
+    "outDir": "dist",
+    "types": ["node"]
+  },
+  "include": [
+    "src",
+    "migrations",
+    "scripts",
+    "tests",
+    "knexfile.ts",
+    "vitest.config.ts"
+  ]
+}

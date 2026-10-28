@@ -1,0 +1,3 @@
+# Abstract storage interface: local filesystem in dev, cloud object storage in prod
+
+Image storage is behind a thin storage interface (`upload(file) → url`, `read(url) → stream`) with two implementations: a local-filesystem implementation used in the Docker dev environment (zero external dependencies, volume-mounted), and an S3-compatible implementation for production. We chose this over local-only (which doesn't scale across instances or serve a CDN in prod) and over cloud-only (which forces cloud credentials and a MinIO emulator into the dev environment). The trade-off is maintaining two implementations, but the interface is tiny and the local impl is trivial — far cheaper than migrating stored images and rewriting upload code later.

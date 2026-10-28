@@ -1,0 +1,3 @@
+# Knex as the query builder
+
+Data access uses Knex (query builder), not a full ORM. We chose Knex over Prisma because the app's most important query — the geo-ranked feed — relies on PostGIS functions (`ST_Distance`, `ST_DWithin`, `geography` types) that ORMs handle awkwardly, forcing a split between ORM-generated CRUD and raw SQL for the one query that matters most. Knex gives composable, readable queries with PostGIS functions inline, migrations out of the box, and a thin type layer can be added on top. We rejected raw `node-postgres` as too manual for a schema with six-plus related entities. The trade-off is no auto-generated types like Prisma offers — types are written or generated separately, manageable for a schema this size.

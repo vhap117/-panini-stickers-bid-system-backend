@@ -1,0 +1,3 @@
+# JWT for session management after social login
+
+After Passport.js confirms identity via a social provider, the backend issues a signed JWT; the client sends it in the `Authorization` header on every REST call and presents it when connecting to Socket.IO. We chose JWT over server-side sessions because the client is a mobile app, which works naturally with token-based auth and less cleanly with cookies and server sessions. JWT keeps the backend stateless — no shared session store, no Redis dependency in the Docker dev environment, and horizontal scaling without shared state. The trade-off is weaker revocation: a stolen access token is valid until expiry, mitigated with short access-token expiry (e.g. 15 min) plus a refresh-token flow.

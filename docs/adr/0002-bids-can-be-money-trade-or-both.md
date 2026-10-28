@@ -1,0 +1,3 @@
+# Bids can be monetary, trade, or a combination
+
+A Bid can be a money offer, a trade offer (one of the bidder's own stickers in exchange), or a trade plus a cash adjustment. We chose "both" over money-only despite the added complexity because swap culture is central to Panini sticker collecting — people complete albums by trading duplicates, not just by buying. A money-only Bid would have been simpler (a single number, uniform events) but would strip out the soul of the product. The trade-off is a polymorphic Bid entity with different fields, validation, and display depending on the offer kind.

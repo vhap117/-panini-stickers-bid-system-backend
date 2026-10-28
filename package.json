@@ -1,0 +1,40 @@
+{
+  "name": "panini-bid-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Panini Stickers Bid System backend - Express + Socket.IO + Knex + Postgres/PostGIS",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "migrate:latest": "ts-node --transpile-only scripts/migrate.ts latest",
+    "migrate:rollback": "ts-node --transpile-only scripts/migrate.ts rollback",
+    "migrate:status": "ts-node --transpile-only scripts/migrate.ts status",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^4.21.2",
+    "google-auth-library": "^11.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "knex": "^3.1.0",
+    "pg": "^8.13.1",
+    "socket.io": "^4.8.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^6.0.2",
+    "socket.io-client": "^4.8.0",
+    "supertest": "^7.0.0",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,5 @@
+# Passport.js strategies for social authentication
+
+> Superseded-by: [ADR-0016](0016-native-social-login-server-side-token-verification.md) — native social login with server-side token verification.
+
+Social authentication is implemented with Passport.js using per-provider strategies (`passport-instagram`, `passport-google-oauth20`, etc.), not a hosted auth service. We chose this because the Docker dev environment must have no external cloud dependencies, and a hosted auth service (Auth0, Clerk, Firebase) would pull a cloud dependency into the most fundamental part of the system. The custom account-linking model (one User, many linkable providers matched by email) is easier to implement directly than to bend a hosted service's identity model toward. Passport strategies are standard OAuth2 flows; the backend owns the User model completely, which matters because User is central to the domain (location, listings, bids). The trade-off is maintaining token refresh, provider API changes, and security edge cases ourselves — bounded work accepted for a self-contained system.

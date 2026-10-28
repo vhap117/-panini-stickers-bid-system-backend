@@ -1,0 +1,10 @@
+# Native social login with server-side token verification
+
+The Capacitor Android app logs in natively with the `@capgo/capacitor-social-login` plugin (Google only — Instagram is dropped, and with it explicit provider linking) and sends Google's OIDC ID token to `POST /auth/login/google`; the backend verifies it server-side via Google's `tokeninfo` endpoint (`aud` must equal our Web-application `GOOGLE_CLIENT_ID`, the token must be unexpired, and `email` is trusted only when `email_verified` is true — an unverified email arrives as null so the email auto-link can never fire on it) and then resolves the User through the existing identity machinery (ADR-0003's `user_identities` match by provider+sub, email auto-link, first-login creation) and issues the same JWT session as before (ADR-0011 unchanged). No client secret is stored anywhere, there is no authorization-code round-trip and no browser redirect, so Passport.js (ADR-0010) and the callback handoff code (ADR-0015) are gone, along with the `handoff_codes` table; `GOOGLE_TOKENINFO_BASE` remains env-overridable so tests stub Google's boundary exactly as the old endpoint overrides did. Trade-offs: a per-login outbound call to Google (5s timeout) instead of Passport's cached strategy plumbing, and the Web-application client ID must be provisioned even though no browser flow uses it — accepted because the mobile-native flow makes any server-side authorization-code architecture impossible.
+
+Supersedes:
+
+- **ADR-0010** (`0010-passportjs-social-auth.md`) — no more Passport.js or authorization-code flow.
+- **ADR-0015** (`0015-oauth-callback-client-handoff.md`) — no more OAuth callbacks, so no handoff codes to exchange.
+
+ADR-0003's one-User-many-linkable-providers *linking* model is superseded (Google-only, no linking), but its core identity model is retained: `user_identities` keeps attaching the Google identity (`sub`) to one User, with the email auto-link intact; existing Instagram rows remain as harmless historical data.

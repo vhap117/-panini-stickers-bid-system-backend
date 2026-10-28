@@ -1,0 +1,27 @@
+# Dedicated Postgres+PostGIS instance for the test harness.
+# Own project name, own ephemeral volume, port 5434 on the host —
+# tests NEVER touch the dev database (panini-bid-dev project).
+# Tear down completely (including data) with:
+#   docker compose -f docker-compose.test.yml down -v
+name: panini-bid-test
+
+services:
+  test-db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_DB: panini_bid_test
+      POSTGRES_USER: panini
+      POSTGRES_PASSWORD: panini
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - panini_test_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U panini -d panini_bid_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  panini_test_pgdata:
