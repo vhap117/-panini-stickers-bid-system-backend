@@ -179,7 +179,7 @@ A Node.js backend (consumed by a separate mobile front-end) that lets users regi
 - **Express (ADR-0008)** as the HTTP framework. Socket.IO attaches to the Express HTTP server.
 - **PostgreSQL + PostGIS (ADR-0007)** as the database. `postgis/postgis` Docker image. Geo types for User/Listing location; `ST_Distance`/`ST_DWithin` for feed ranking.
 - **Knex (ADR-0009)** as the query builder + migration tool. PostGIS functions inline. No full ORM. Types managed separately.
-- **Abstract storage interface (ADR-0006).** `upload(file) → url`, `read(url) → stream`. Local-filesystem implementation in dev (volume-mounted in Docker); S3-compatible implementation for prod. Selected via config.
+- **Abstract storage interface (ADR-0006).** `upload(file) → url`, `read(url) → stream`, `delete(url)`, `urlFor(key) → url`. Two implementations behind it: a local-filesystem one in dev (volume-mounted in Docker) and an S3-compatible one for prod. Selected via config (`STORAGE_DRIVER`, `STORAGE_LOCAL_ROOT`; for S3 also `S3_BUCKET`, `S3_REGION`, `S3_ENDPOINT`, `S3_PUBLIC_BASE_URL`, `S3_FORCE_PATH_STYLE`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`); an unsupported or unconfigured driver refuses to boot rather than failing an upload at runtime. The driver owns the URL shape: the local driver returns a root-relative url (`/uploads/<key>`), the S3 driver returns an **absolute public/CDN url**, so the client fetches Photos straight from the bucket instead of the API proxying image bytes. `S3_ENDPOINT` (where the SDK sends API calls) and `S3_PUBLIC_BASE_URL` (where browsers fetch objects) are separate settings.
 - **Node.js + TypeScript.** `.nvmrc` for version pinning.
 
 ### Docker Dev Environment (ADR-0013)
@@ -194,7 +194,7 @@ A Node.js backend (consumed by a separate mobile front-end) that lets users regi
 - `stickers` — id, album_id (FK), number, subject (canonical), created_at. Seeded + user-contributed. Per-locale subjects in `sticker_translations` (id, sticker_id FK, locale, subject).
 - `users` — id, display_name, location (PostGIS geography point), preferred_locale (en | es), created_at.
 - `user_identities` — id, user_id (FK), provider (instagram/google), provider_user_id, email, linked_at. Supports multiple identities per user.
-- `listings` — id, seller_id (FK users), sticker_id (FK), photo_url, state (draft/published/sold/cancelled), created_at, published_at, ended_at.
+- `listings` — id, seller_id (FK users), sticker_id (FK, nullable while the Listing is still a draft), state (draft/published/sold/cancelled), created_at, published_at, ended_at. A Listing's Photos are rows in `listing_photos` (id, listing_id FK, side (front/back), url, created_at) — a Photo belongs to exactly one Listing and shows one side of the physical Sticker. `url` is the url the active storage driver handed back: root-relative for the local driver, an absolute public/CDN url for the S3 driver. The Album is reached THROUGH the Sticker, so there is no `album_id` column.
 - `bids` — id, listing_id (FK), bidder_id (FK users), amount (nullable, for monetary), offered_sticker_id (nullable FK stickers, for trade), state (active/accepted/rejected/withdrawn), created_at, updated_at. One active bid per (listing_id, bidder_id).
 - `messages` — id, listing_id (nullable FK, for Chat Room messages), direct_chat_id (nullable FK, for Direct Chat messages), sender_id (FK users), content, created_at.
 - `direct_chats` — id, listing_id (FK, the sold listing), seller_id (FK users), buyer_id (FK users), created_at. One per sold listing.
@@ -209,7 +209,8 @@ A Node.js backend (consumed by a separate mobile front-end) that lets users regi
 - `POST /auth/logout` — invalidate session (client-side token discard; refresh-token revocation).
 - `GET /albums` — list albums (catalog; display names in the requester's preferred locale, falling back to the canonical name); `POST /albums` — user-contributed album (name accepted in any supported locale, canonicalized later).
 - `GET /albums/:id/stickers` — list stickers in an album (locale-resolved subjects); `POST /albums/:id/stickers` — user-contributed sticker.
-- `POST /listings` — create draft (upload photo + sticker/album details).
+- `POST /listings` — create draft. `multipart/form-data`: a `photo` file part (required) and an optional `stickerId` field; the Sticker may be filled in later via `PATCH /listings/:id`, and publishing requires completeness. Errors: `PHOTO_REQUIRED` / `INVALID_PHOTO` (400), `UNKNOWN_STICKER` (404), `UNAUTHENTICATED` (401).
+- `GET /uploads/:key` — serve a stored Photo's bytes. The key is a server-generated UUID plus an extension; the route is unauthenticated (the unguessable key is the capability). `PHOTO_NOT_FOUND` (404) for an unknown or invalid key.
 - `PATCH /listings/:id` — edit draft (change photo, sticker, album).
 - `POST /listings/:id/publish` — publish a draft.
 - `POST /listings/:id/cancel` — cancel a published listing.

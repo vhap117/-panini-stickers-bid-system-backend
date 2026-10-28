@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { createDb } from '../src/db';
 import { start, type RunningApp } from '../src/server';
 import { DEV_ALLOWED_ORIGINS, type AuthConfig } from '../src/config';
@@ -45,6 +47,29 @@ export interface StartTestAppOptions {
    * default, mirroring the fail-closed env default (DEV_AUTH_ENABLED).
    */
   devAuthEnabled?: boolean;
+  /**
+   * Overrides the Photo storage selection (ADR-0006). Defaults to the local
+   * filesystem driver under a harmless temp root; specs that assert on
+   * stored bytes pass their own per-test directory.
+   */
+  storage?: {
+    driver?: string;
+    localRoot?: string;
+    /**
+     * S3-compatible settings, passed through only when the caller supplies
+     * one. An s3 driver with NO s3 block must still refuse to boot — see the
+     * "storage implementation is selected by config" spec.
+     */
+    s3?: {
+      bucket?: string;
+      region?: string;
+      endpoint?: string;
+      publicBaseUrl?: string;
+      forcePathStyle?: boolean;
+      accessKeyId?: string;
+      secretAccessKey?: string;
+    };
+  };
 }
 
 export function startTestApp(opts: StartTestAppOptions = {}): Promise<RunningApp> {
@@ -62,6 +87,24 @@ export function startTestApp(opts: StartTestAppOptions = {}): Promise<RunningApp
     auth,
     http: { allowedOrigins: opts.allowedOrigins ?? [...DEV_ALLOWED_ORIGINS] },
     devAuth: { enabled: opts.devAuthEnabled ?? false },
+    storage: {
+      driver: opts.storage?.driver ?? 'local',
+      localRoot: opts.storage?.localRoot ?? path.join(os.tmpdir(), 'panini-test-uploads'),
+      // Conditional on purpose: defaults would fabricate an s3 block for an
+      // unconfigured s3 driver, which must fail fast instead.
+      s3: opts.storage?.s3
+        ? {
+            bucket: opts.storage.s3.bucket ?? 'panini-photos',
+            region: opts.storage.s3.region ?? 'us-east-1',
+            endpoint: opts.storage.s3.endpoint,
+            publicBaseUrl:
+              opts.storage.s3.publicBaseUrl ?? 'http://127.0.0.1:9000/panini-photos',
+            forcePathStyle: opts.storage.s3.forcePathStyle ?? true,
+            accessKeyId: opts.storage.s3.accessKeyId ?? 'S3RVER',
+            secretAccessKey: opts.storage.s3.secretAccessKey ?? 'S3RVER',
+          }
+        : undefined,
+    },
   });
 }
 

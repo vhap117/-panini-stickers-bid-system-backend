@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+# Default local Photo storage root (ADR-0006) when running outside Docker.
+var/uploads/
 .env
 .env.*
 *.log

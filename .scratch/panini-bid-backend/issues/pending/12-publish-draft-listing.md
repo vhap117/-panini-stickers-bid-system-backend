@@ -21,3 +21,21 @@ The draft → published transition: `POST /listings/:id/publish` moves the selle
 ## Blocked by
 
 - `10-create-draft-listing-photo-upload.md`
+
+## Comments
+
+Carried over from issue 10, which shipped the schema this slice publishes:
+
+- **"At minimum a photo" means a `front` Photo.** Photos are rows in
+  `listing_photos` with a `side` (`front` / `back`); issue 10 uploads one
+  `front` Photo. `CONTEXT.md` says a Listing is photographed from both sides,
+  which reads as if publishing required both — it does not. Publish requires
+  a `front` Photo; the `back` Photo stays optional. Rationale is recorded in
+  issue 10's comments.
+- **"A Sticker reference" means `listings.sticker_id IS NOT NULL`.** The
+  column is nullable so a draft can start photo-only; issue 11 fills it in.
+- `published_at` is set on the transition; `ended_at` stays null until the
+  Listing is `sold` or `cancelled` (issues 17 / 18).
+- The Album is reached through the Sticker — there is no `album_id` column
+  to check.
+

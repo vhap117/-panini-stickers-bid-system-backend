@@ -91,6 +91,62 @@ Authentication (ADR-0011, ADR-0016):
   (default `https://www.googleapis.com`; used by the test suite to point
   the app at a stub of Google's boundary)
 
+### Photo storage (ADR-0006)
+
+Photo bytes live behind a storage interface (`upload(file) → url`,
+`read(url) → stream`, `delete(url)`, `urlFor(key) → url`). Two drivers ship:
+the local filesystem and an S3-compatible one (AWS S3, MinIO, R2, …). The
+implementation is chosen by config and an unsupported or unconfigured driver
+refuses to boot rather than failing a Photo upload at runtime.
+
+- `STORAGE_DRIVER` — storage implementation (default `local`; any other value
+  fails the boot)
+- `STORAGE_LOCAL_ROOT` — directory the local driver writes into
+  (default `./var/uploads`; in the dev compose project it is the
+  `panini_uploads` volume mounted at `/app/var/uploads`)
+
+For the S3 driver:
+
+- `S3_BUCKET` — **required** with `STORAGE_DRIVER=s3`. The bucket Photos
+  are written to.
+- `S3_PUBLIC_BASE_URL` — **required** with `STORAGE_DRIVER=s3`. The absolute
+  base for public Photo urls, e.g. `https://cdn.example.com`. The driver
+  returns these urls to the client, which then fetches Photos straight from
+  the bucket/CDN instead of through the API.
+- `S3_REGION` — default `us-east-1`.
+- `S3_ENDPOINT` — API endpoint for an S3-compatible service
+  (MinIO, R2). Leave unset for real AWS S3. This is **not** the same as
+  `S3_PUBLIC_BASE_URL`: the endpoint is where the SDK sends API calls (inside
+  your network), the public base url is where browsers fetch objects.
+- `S3_FORCE_PATH_STYLE` — `true`/`1` for path-style addressing (MinIO).
+- `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` — optional. Leave unset to use
+  the AWS SDK's default credential chain (an IAM role in production).
+
+Try the S3 driver locally without any cloud account:
+
+```sh
+npm run dev:s3        # an S3-compatible server on 127.0.0.1:9000
+```
+
+Then run the app with:
+
+```sh
+STORAGE_DRIVER=s3 \
+S3_BUCKET=panini-photos \
+S3_ENDPOINT=http://127.0.0.1:9000 \
+S3_PUBLIC_BASE_URL=http://127.0.0.1:9000/panini-photos \
+S3_FORCE_PATH_STYLE=true \
+S3_ACCESS_KEY_ID=S3RVER \
+S3_SECRET_ACCESS_KEY=S3RVER \
+npm run dev
+```
+
+Stored Photos are served from `GET /uploads/:key`, where the key is a
+server-generated UUID plus an extension. That route is deliberately
+unauthenticated — image loads in a mobile WebView carry no Bearer token, and
+the unguessable key is the capability — and it works for both drivers, since
+the route asks the driver for the url to read.
+
 ### Development-only login
 
 The Web front-end can log in without any social provider against the real

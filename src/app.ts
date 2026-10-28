@@ -1,7 +1,9 @@
-import express, { type Express, type Request, type Response } from 'express';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
+import multer from 'multer';
 import type { Knex } from 'knex';
 import type { AuthConfig, DevAuthConfig, HttpConfig } from './config';
+import type { Storage } from './storage';
 import { issueSession, resolveUserForLogin, type LoginSession } from './auth/identity';
 import { verifyGoogleIdToken } from './auth/google-token';
 import { devLogin, isDevPersonaName } from './auth/dev-login';
@@ -11,7 +13,10 @@ import { updateUserDetails, locationFromWkt } from './users/update-me';
 import { listAlbums } from './catalog/list-albums';
 import { createAlbum } from './catalog/create-album';
 import { listStickers } from './catalog/list-stickers';
+import { searchStickers } from './catalog/search-stickers';
 import { createSticker } from './catalog/create-sticker';
+import { createDraftListing } from './listings/create-listing';
+import { contentTypeForKey } from './storage/keys';
 import { requestLog } from './request-log';
 
 /**
@@ -43,11 +48,36 @@ async function profileOf(db: Knex, userId: string): Promise<{
   };
 }
 
+/** 10 MB is plenty for a phone photo of one sticker side. */
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Multer buffers the (single) `photo` part in memory; the domain module owns
+ * content-type validation. Its failures — size limit, malformed multipart,
+ * unexpected field — become the same locale-neutral 400 rather than
+ * Express's default HTML error page (ADR-0014).
+ */
+const parsePhoto = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: PHOTO_MAX_BYTES },
+}).single('photo');
+
+function uploadPhoto(req: Request, res: Response, next: NextFunction): void {
+  parsePhoto(req, res, (err: unknown) => {
+    if (err) {
+      res.status(400).json({ code: 'INVALID_PHOTO', data: {} });
+      return;
+    }
+    next();
+  });
+}
+
 export function createApp(
   db: Knex,
   auth: AuthConfig,
   http: HttpConfig,
   devAuth: DevAuthConfig,
+  storage: Storage,
 ): Express {
   const app = express();
 
@@ -265,6 +295,33 @@ export function createApp(
     res.status(200).json({ code: 'OK', data: { stickers } });
   });
 
+  // Catalog-wide Sticker search (issue 20): finds a Sticker by name across
+  // ALL Albums for the frontend autocomplete, with display values resolved
+  // to the authenticated User's preferred locale (ADR-0014). An empty or
+  // whitespace-only query is a normal autocomplete state — 200 with an empty
+  // list, not an error. `limit` defaults to 20 and clamps silently at 50; a
+  // non-numeric limit falls back to the default.
+  app.get('/stickers', requireAccessToken(auth), async (req: AuthedRequest, res) => {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ code: 'UNAUTHENTICATED', data: {} });
+      return;
+    }
+    const user = await db('users').where({ id: userId }).first('preferred_locale');
+    if (!user) {
+      res.status(401).json({ code: 'UNAUTHENTICATED', data: {} });
+      return;
+    }
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    const parsedLimit = typeof req.query.limit === 'string' ? Number(req.query.limit) : NaN;
+    const limit =
+      Number.isFinite(parsedLimit) && parsedLimit >= 1
+        ? Math.min(Math.floor(parsedLimit), 50)
+        : 20;
+    const stickers = await searchStickers(db, user.preferred_locale, query, limit);
+    res.status(200).json({ code: 'OK', data: { stickers } });
+  });
+
   // The user-contributed half of the Sticker catalog (issue 09, ADR-0004):
   // the authenticated User adds a Sticker the roster does not know yet. The
   // submitted subject becomes both the canonical subject and a translation
@@ -322,6 +379,67 @@ export function createApp(
     }
     res.status(200).json({ code: 'OK', data: profile });
   });
+
+  // Photo bytes stay behind the storage abstraction (ADR-0006). This path is
+  // deliberately unauthenticated: image loads in a mobile WebView carry no
+  // Bearer token, and the unguessable uuid key is the capability. The storage
+  // layer validates the key (path-traversal proof); no database lookup here,
+  // and no express.static.
+  app.get('/uploads/:key', async (req: Request, res: Response) => {
+    const key = req.params.key;
+    try {
+      const stream = await storage.read(storage.urlFor(key));
+      res.type(contentTypeForKey(key));
+      stream.on('error', () => res.destroy());
+      stream.pipe(res);
+    } catch {
+      res.status(404).json({ code: 'PHOTO_NOT_FOUND', data: {} });
+    }
+  });
+
+  // The seller photographs the physical Sticker and creates a draft Listing
+  // (issue 10, CONTEXT.md). The access-token check runs BEFORE multer so an
+  // unauthenticated request never buffers bytes. The photo may be the only
+  // starting point: the Sticker (and thus the Album) can be filled in later
+  // by issue 11, and publishing (issue 12) owns completeness. Errors are
+  // locale-neutral (ADR-0014) and the module validates before persisting.
+  app.post(
+    '/listings',
+    requireAccessToken(auth),
+    uploadPhoto,
+    async (req: AuthedRequest, res) => {
+      const userId = req.userId;
+      if (!userId) {
+        res.status(401).json({ code: 'UNAUTHENTICATED', data: {} });
+        return;
+      }
+      const photo = req.file
+        ? { bytes: req.file.buffer, contentType: req.file.mimetype }
+        : null;
+      const submittedStickerId = req.body?.stickerId;
+      const stickerId =
+        typeof submittedStickerId === 'string'
+          ? submittedStickerId
+          : submittedStickerId === undefined
+            ? null
+            : String(submittedStickerId);
+
+      const listing = await createDraftListing(db, storage, {
+        sellerId: userId,
+        photo,
+        stickerId,
+      });
+      if (listing === 'PHOTO_REQUIRED' || listing === 'INVALID_PHOTO') {
+        res.status(400).json({ code: listing, data: {} });
+        return;
+      }
+      if (listing === 'UNKNOWN_STICKER') {
+        res.status(404).json({ code: listing, data: {} });
+        return;
+      }
+      res.status(200).json({ code: 'OK', data: { listing } });
+    },
+  );
 
   return app;
 }

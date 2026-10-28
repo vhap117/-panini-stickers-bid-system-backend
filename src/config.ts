@@ -54,12 +54,44 @@ export interface DevAuthConfig {
   enabled: boolean;
 }
 
+/**
+ * S3-compatible storage settings (ADR-0006). Two urls that must never be
+ * conflated: `endpoint` is where the SDK sends API calls (inside the
+ * network — unset means real AWS S3), while `publicBaseUrl` is where
+ * browsers fetch the objects (outside the network, usually a CDN).
+ */
+export interface S3Config {
+  bucket: string;
+  region: string;
+  /** API endpoint; unset => real AWS S3. */
+  endpoint?: string;
+  /** Absolute base for PUBLIC urls; no trailing slash. */
+  publicBaseUrl: string;
+  forcePathStyle: boolean;
+  /** Unset => the SDK's default credential chain (IAM roles in production). */
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}
+
+/**
+ * Photo storage selection (ADR-0006). `driver` names the implementation;
+ * `localRoot` is the filesystem root the local driver writes into. The `s3`
+ * block exists only for the s3 driver. An unsupported driver refuses to boot
+ * (src/storage/index.ts).
+ */
+export interface StorageConfig {
+  driver: string;
+  localRoot: string;
+  s3?: S3Config;
+}
+
 export interface AppConfig {
   port: number;
   database: DatabaseConfig;
   auth: AuthConfig;
   http: HttpConfig;
   devAuth: DevAuthConfig;
+  storage: StorageConfig;
 }
 
 /**
@@ -116,6 +148,40 @@ function authFromEnv(env: NodeJS.ProcessEnv): AuthConfig {
   };
 }
 
+function storageFromEnv(env: NodeJS.ProcessEnv): StorageConfig {
+  const driver = env.STORAGE_DRIVER ?? 'local';
+  const config: StorageConfig = {
+    driver,
+    localRoot: env.STORAGE_LOCAL_ROOT ?? './var/uploads',
+  };
+  // Only the s3 driver gets an s3 block — never fabricate one for 'local'.
+  if (driver === 's3') {
+    const bucket = env.S3_BUCKET;
+    const publicBaseUrl = env.S3_PUBLIC_BASE_URL;
+    // Fail fast, like GOOGLE_CLIENT_ID (src/server.ts): the app refuses to
+    // start without a bucket to write to and a public url to serve from.
+    if (!bucket || !publicBaseUrl) {
+      throw new Error(
+        'S3_BUCKET and S3_PUBLIC_BASE_URL are required for the s3 storage driver',
+      );
+    }
+    const forcePathStyle = env.S3_FORCE_PATH_STYLE?.toLowerCase();
+    config.s3 = {
+      bucket,
+      region: env.S3_REGION ?? 'us-east-1',
+      // Where the SDK sends API calls; unset means real AWS S3.
+      endpoint: env.S3_ENDPOINT || undefined,
+      // Where browsers fetch objects; a different thing from the endpoint.
+      publicBaseUrl,
+      forcePathStyle: forcePathStyle === 'true' || forcePathStyle === '1',
+      // Unset (or empty) => let the SDK's default credential chain run.
+      accessKeyId: env.S3_ACCESS_KEY_ID || undefined,
+      secretAccessKey: env.S3_SECRET_ACCESS_KEY || undefined,
+    };
+  }
+  return config;
+}
+
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const devAuthEnabled = devAuthEnabledFromEnv(env);
   // Fail closed (layer 1): the dev login must never exist in production.
@@ -128,6 +194,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): AppConfig {
     auth: authFromEnv(env),
     http: httpFromEnv(env),
     devAuth: { enabled: devAuthEnabled },
+    storage: storageFromEnv(env),
   };
 }
 

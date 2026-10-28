@@ -8,9 +8,17 @@ services:
       - ./:/app
       # anonymous volume so the source mount does not shadow image-installed deps
       - /app/node_modules
+      # Uploaded Photos live outside the source mount (ADR-0006): the local
+      # storage impl writes here and the named volume keeps them across
+      # rebuilds instead of leaving them in the working tree.
+      - panini_uploads:/app/var/uploads
     environment:
       PORT: "3000"
       JWT_SECRET: dev-insecure-jwt-secret
+      # Photo storage selection (ADR-0006). The local driver writes into the
+      # volume mounted above.
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_ROOT: /app/var/uploads
       CORS_ALLOWED_ORIGINS: http://localhost:8100,http://localhost:8101,http://localhost:8102,http://localhost,https://localhost,capacitor://localhost
       PGHOST: db
       PGPORT: "5432"
@@ -62,3 +70,4 @@ services:
 
 volumes:
   panini_dev_pgdata:
+  panini_uploads:

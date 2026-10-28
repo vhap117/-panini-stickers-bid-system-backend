@@ -6,6 +6,7 @@ import type { Knex } from 'knex';
 import { createApp } from './app';
 import { createDb } from './db';
 import { installSocketAuth } from './auth/socket-middleware';
+import { createStorage } from './storage';
 import type { AppConfig } from './config';
 
 export interface RunningApp {
@@ -39,8 +40,11 @@ export async function start(config: AppConfig): Promise<RunningApp> {
   if (!config.auth.googleClientId) {
     throw new Error('GOOGLE_CLIENT_ID is required (the Web-application OAuth client ID)');
   }
+  // Fail fast: an unsupported storage driver must refuse to boot, never
+  // surface later as a failed Photo upload (ADR-0006).
+  const storage = createStorage(config.storage);
   const db = createDb(config.database);
-  const app = createApp(db, config.auth, config.http, config.devAuth);
+  const app = createApp(db, config.auth, config.http, config.devAuth, storage);
   const server = http.createServer(app);
   const io = new SocketIoServer(server);
 
